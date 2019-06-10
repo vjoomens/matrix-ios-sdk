@@ -49,6 +49,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (MXHTTPOperation*)sendReaction:(NSString*)reaction
                          toEvent:(NSString*)eventId
                           inRoom:(NSString*)roomId
+                       localEcho:(MXEvent * _Nullable * _Nonnull)localEchoEvent                       
                          success:(void (^)(NSString *eventId))success
                          failure:(void (^)(NSError *error))failure;
 

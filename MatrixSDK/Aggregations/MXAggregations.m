@@ -43,36 +43,47 @@
 
 #pragma mark - Reactions
 
+//- (MXHTTPOperation*)sendReaction:(NSString*)reaction
+//                         toEvent:(NSString*)eventId
+//                          inRoom:(NSString*)roomId
+//                         success:(void (^)(NSString *eventId))success
+//                         failure:(void (^)(NSError *error))failure
+//{
+//    // TODO: sendReaction should return only when the actual reaction event comes back the sync
+//    MXWeakify(self);
+//    return [self.mxSession.matrixRestClient sendRelationToEvent:eventId
+//                                                         inRoom:roomId
+//                                                   relationType:MXEventRelationTypeAnnotation
+//                                                      eventType:kMXEventTypeStringReaction
+//                                                     parameters:@{
+//                                                                  @"key": reaction
+//                                                                  }
+//                                                        content:@{}
+//                                                        success:success failure:^(NSError *error)
+//            {
+//                MXStrongifyAndReturnIfNil(self);
+//
+//                MXError *mxError = [[MXError alloc] initWithNSError:error];
+//                if ([mxError.errcode isEqualToString:kMXErrCodeStringUnrecognized])
+//                {
+//                    [self sendReactionUsingHack:reaction toEvent:eventId inRoom:roomId success:success failure:failure];
+//                }
+//                else
+//                {
+//                    failure(error);
+//                }
+//            }];
+//}
+
+// TODO: Use /send_relation when aggregations API will be enabled
 - (MXHTTPOperation*)sendReaction:(NSString*)reaction
                          toEvent:(NSString*)eventId
                           inRoom:(NSString*)roomId
+                       localEcho:(MXEvent**)localEchoEvent
                          success:(void (^)(NSString *eventId))success
                          failure:(void (^)(NSError *error))failure
 {
-    // TODO: sendReaction should return only when the actual reaction event comes back the sync
-    MXWeakify(self);
-    return [self.mxSession.matrixRestClient sendRelationToEvent:eventId
-                                                         inRoom:roomId
-                                                   relationType:MXEventRelationTypeAnnotation
-                                                      eventType:kMXEventTypeStringReaction
-                                                     parameters:@{
-                                                                  @"key": reaction
-                                                                  }
-                                                        content:@{}
-                                                        success:success failure:^(NSError *error)
-            {
-                MXStrongifyAndReturnIfNil(self);
-
-                MXError *mxError = [[MXError alloc] initWithNSError:error];
-                if ([mxError.errcode isEqualToString:kMXErrCodeStringUnrecognized])
-                {
-                    [self sendReactionUsingHack:reaction toEvent:eventId inRoom:roomId success:success failure:failure];
-                }
-                else
-                {
-                    failure(error);
-                }
-            }];
+    return [self sendReactionUsingHack:reaction toEvent:eventId inRoom:roomId localEcho:localEchoEvent success:success failure:failure];
 }
 
 - (MXHTTPOperation*)unReactOnReaction:(NSString*)reaction
@@ -83,7 +94,7 @@
 {
     MXHTTPOperation *operation;
 
-    MXReactionCount *reactionCount = [self.aggregatedReactionsUpdater reactionCountForReaction:reaction onEvent:eventId];
+    MXReactionCount *reactionCount = [self.aggregatedReactionsUpdater reactionCountForReaction:reaction onEvent:eventId inRoom:roomId];
     if (reactionCount && reactionCount.myUserReactionEventId)
     {
         MXRoom *room = [self.mxSession roomWithRoomId:roomId];
@@ -166,9 +177,8 @@
         self.mxSession = mxSession;
         self.store = [[MXRealmAggregationsStore alloc] initWithCredentials:mxSession.matrixRestClient.credentials];
 
-        self.aggregatedReactionsUpdater = [[MXAggregatedReactionsUpdater alloc] initWithMyUser:mxSession.matrixRestClient.credentials.userId
-                                                                              aggregationStore:self.store
-                                                                                   matrixStore:mxSession.store];
+        self.aggregatedReactionsUpdater = [[MXAggregatedReactionsUpdater alloc] initWithMatrixSession:self.mxSession aggregationStore:self.store];
+        
         self.aggregatedEditsUpdater = [[MXAggregatedEditsUpdater alloc] initWithMyUser:mxSession.matrixRestClient.credentials.userId
                                                                       aggregationStore:self.store
                                                                            matrixStore:mxSession.store];
@@ -184,7 +194,8 @@
     MXEventRelations *relations = event.unsignedData.relations;
     if (relations.annotation)
     {
-        [self.aggregatedReactionsUpdater handleOriginalAggregatedDataOfEvent:event annotations:relations.annotation];
+        // TODO: Uncomment when aggregation API will be enabled for reactions
+//        [self.aggregatedReactionsUpdater handleOriginalAggregatedDataOfEvent:event annotations:relations.annotation];
     }
     //        else if (relations.replace)
     //        {
@@ -234,6 +245,7 @@
 - (MXHTTPOperation*)sendReactionUsingHack:(NSString*)reaction
                                   toEvent:(NSString*)eventId
                                    inRoom:(NSString*)roomId
+                                localEcho:(MXEvent**)localEchoEvent
                                   success:(void (^)(NSString *eventId))success
                                   failure:(void (^)(NSError *error))failure
 {
@@ -253,8 +265,8 @@
                                               @"key": reaction
                                               }
                                       };
-
-    return [room sendEventOfType:kMXEventTypeStringReaction content:reactionContent localEcho:nil success:success failure:failure];
+    
+    return [room sendEventOfType:kMXEventTypeStringReaction content:reactionContent localEcho:localEchoEvent success:success failure:failure];
 }
 
 @end
