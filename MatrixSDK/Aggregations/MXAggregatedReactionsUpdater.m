@@ -20,38 +20,42 @@
 #import "MXEventRelations.h"
 #import "MXEventAnnotationChunk.h"
 #import "MXEventAnnotation.h"
+#import "MXSession.h"
 
 @interface MXAggregatedReactionsUpdater ()
 
 @property (nonatomic) NSString *myUserId;
 @property (nonatomic, weak) id<MXStore> matrixStore;
 @property (nonatomic, weak) id<MXAggregationsStore> store;
+@property (nonatomic, weak) MXSession *mxSession;
 @property (nonatomic) NSMutableArray<MXReactionCountChangeListener*> *listeners;
 
 @end
 
 @implementation MXAggregatedReactionsUpdater
 
-- (instancetype)initWithMyUser:(NSString *)userId aggregationStore:(id<MXAggregationsStore>)store matrixStore:(id<MXStore>)matrixStore
+- (instancetype)initWithMatrixSession:(MXSession *)mxSession aggregationStore:(id<MXAggregationsStore>)aggregationStore
 {
     self = [super init];
     if (self)
     {
-        self.myUserId = userId;
-        self.store = store;
-        self.matrixStore = matrixStore;
+        self.myUserId = mxSession.matrixRestClient.credentials.userId;
+        self.store = aggregationStore;
+        self.matrixStore = mxSession.store;
+        self.mxSession = mxSession;
 
         self.listeners = [NSMutableArray array];
     }
     return self;
 }
 
-
 #pragma mark - Data access
 
 - (nullable MXAggregatedReactions *)aggregatedReactionsOnEvent:(NSString*)eventId inRoom:(NSString*)roomId
 {
-    NSArray<MXReactionCount*> *reactions = [self.store reactionCountsOnEvent:eventId];
+    // TODO: Use reaction count when API will be enabled
+//    NSArray<MXReactionCount*> *reactions = [self.store reactionCountsOnEvent:eventId];
+    NSArray<MXReactionCount*> *reactions;
 
     if (!reactions)
     {
@@ -69,11 +73,10 @@
     return aggregatedReactions;
 }
 
-- (nullable MXReactionCount*)reactionCountForReaction:(NSString*)reaction onEvent:(NSString*)eventId
+- (nullable MXReactionCount*)reactionCountForReaction:(NSString*)reaction onEvent:(NSString*)eventId inRoom:(NSString*)roomId;
 {
-    return [self.store reactionCountForReaction:reaction onEvent:eventId];
+    return [self reactionCountsUsingHackOnEvent:eventId withReaction:reaction inRoom:roomId].firstObject;
 }
-
 
 #pragma mark - Data update listener
 
@@ -122,28 +125,30 @@
     }
 }
 
+
 - (void)handleReaction:(MXEvent *)event direction:(MXTimelineDirection)direction
 {
     NSString *parentEventId = event.relatesTo.eventId;
     NSString *reaction = event.relatesTo.key;
-
+    
     if (parentEventId && reaction)
     {
-        // Manage aggregated reactions only for events in timelines we have
-        MXEvent *parentEvent = [self.matrixStore eventWithEventId:parentEventId inRoom:event.roomId];
-        if (parentEvent)
-        {
-            if (direction == MXTimelineDirectionForwards)
-            {
-                [self updateReactionCountForReaction:reaction toEvent:parentEventId reactionEvent:event];
-            }
-
-            [self storeRelationForReaction:reaction toEvent:parentEventId reactionEvent:event];
-        }
-        else
-        {
+        // TODO: Use reaction count when API will be enabled
+//        // Manage aggregated reactions only for events in timelines we have
+//        MXEvent *parentEvent = [self.matrixStore eventWithEventId:parentEventId inRoom:event.roomId];
+//        if (parentEvent)
+//        {
+//            if (direction == MXTimelineDirectionForwards)
+//            {
+//                [self updateReactionCountForReaction:reaction toEvent:parentEventId reactionEvent:event];
+//            }
+//
+//            [self storeRelationForReaction:reaction toEvent:parentEventId reactionEvent:event];
+//        }
+//        else
+//        {
             [self storeRelationForHackForReaction:reaction toEvent:parentEventId reactionEvent:event];
-        }
+//        }
     }
     else
     {
@@ -177,6 +182,7 @@
     relation.reaction = reaction;
     relation.eventId = eventId;
     relation.reactionEventId = reactionEvent.eventId;
+    relation.senderId = reactionEvent.sender;
 
     [self.store addReactionRelation:relation inRoom:reactionEvent.roomId];
 }
@@ -287,7 +293,7 @@
 /// TODO: To remove once the feature has landed on matrix.org homeserver
 
 
-// If not already done, run the hack: build reaction count from known relations
+//// If not already done, run the hack: build reaction count from known relations
 - (void)checkAggregationStoreWithHackForEvent:(NSString*)eventId inRoomId:(NSString*)roomId
 {
     if (![self.store hasReactionCountsOnEvent:eventId])
@@ -302,15 +308,49 @@
     }
 }
 
-// Compute reactions counts from relations we know
-// Note: This is not accurate and will be removed soon
 - (nullable NSArray<MXReactionCount*> *)reactionCountsUsingHackOnEvent:(NSString*)eventId inRoom:(NSString*)roomId
 {
+    return [self reactionCountsUsingHackOnEvent:eventId withReaction:nil inRoom:roomId];
+}
+
+// Compute reactions counts from relations we know
+// Note: This is not accurate and will be removed soon
+- (nullable NSArray<MXReactionCount*> *)reactionCountsUsingHackOnEvent:(NSString*)eventId withReaction:(NSString*)reaction inRoom:(NSString*)roomId
+{
     NSDate *startDate = [NSDate date];
-
+    
     NSMutableDictionary<NSString*, MXReactionCount*> *reactionCountDict;
-
-    NSArray<MXReactionRelation*> *relations = [self.store reactionRelationsOnEvent:eventId];
+    
+    NSMutableArray<MXReactionRelation*> *relations = [NSMutableArray new];
+    
+    NSArray<MXReactionRelation*> *remoteEchoesRelations;
+    
+    if (reaction)
+    {
+        remoteEchoesRelations = [self.store reactionRelationsOnEvent:eventId withReaction:reaction];
+        
+        for (MXReactionRelation *reactionRelation in [self.store reactionRelationsOnEvent:eventId])
+        {
+            NSLog(@"reaction: %@", reactionRelation.reaction);
+        }
+    }
+    else
+    {
+        remoteEchoesRelations = [self.store reactionRelationsOnEvent:eventId];
+    }
+    
+    if (remoteEchoesRelations)
+    {
+        [relations addObjectsFromArray:remoteEchoesRelations];
+    }
+    
+    NSArray<MXReactionRelation*> *localEchoesRelations = [self localEchoesReactionRelationsOnEvent:eventId withReaction:reaction inRoom:roomId];
+    
+    if (localEchoesRelations)
+    {
+        [relations addObjectsFromArray:localEchoesRelations];
+    }
+    
     for (MXReactionRelation *relation in relations)
     {
         if (!reactionCountDict)
@@ -326,25 +366,67 @@
             reactionCount.reaction = relation.reaction;
             reactionCountDict[relation.reaction] = reactionCount;
         }
-
+        
         reactionCount.count++;
-
+        
         if (!reactionCount.myUserReactionEventId)
         {
             // Determine if my user has reacted
-            MXEvent *event = [self.matrixStore eventWithEventId:relation.reactionEventId inRoom:roomId];
-            if ([event.sender isEqualToString:self.myUserId])
+            if ([relation.senderId isEqualToString:self.myUserId])
             {
                 reactionCount.myUserReactionEventId = relation.reactionEventId;
             }
         }
     }
-
+    
     NSLog(@"[MXAggregations] reactionCountsUsingHackOnEvent: Build %@ reactionCounts in %.0fms",
           @(reactionCountDict.count),
           [[NSDate date] timeIntervalSinceDate:startDate] * 1000);
-
+    
     return reactionCountDict.allValues;
+}
+
+- (nullable NSArray<MXReactionRelation*> *)localEchoesReactionRelationsOnEvent:(NSString*)eventId inRoom:(NSString*)roomId
+{
+    return [self localEchoesReactionRelationsOnEvent:eventId withReaction:nil inRoom:roomId];
+}
+
+- (nullable NSArray<MXReactionRelation*> *)localEchoesReactionRelationsOnEvent:(NSString*)eventId withReaction:(NSString*)reaction inRoom:(NSString*)roomId
+{
+    MXRoom *room = [self.mxSession roomWithRoomId:roomId];
+    NSArray *outgoingMessages = room.outgoingMessages;
+    
+    if (!outgoingMessages.count)
+    {
+        return nil;
+    }
+    
+    NSMutableArray<MXReactionRelation*> *reactionRelations;
+    
+    for (MXEvent *localEchoEvent in outgoingMessages)
+    {
+        // Search for reaction event of current user. Filter with reaction string parameter if not nil.
+        if ([localEchoEvent.sender isEqualToString:self.myUserId]
+            && localEchoEvent.eventType == MXEventTypeReaction
+            && [localEchoEvent.relatesTo.eventId isEqualToString:eventId]
+            && (!reaction || [localEchoEvent.relatesTo.key isEqualToString:reaction]))
+        {
+            if (!reactionRelations)
+            {
+                reactionRelations = [NSMutableArray new];
+            }
+            
+            MXReactionRelation *reactionRelation = [MXReactionRelation new];
+            reactionRelation.eventId = eventId;
+            reactionRelation.reaction = localEchoEvent.relatesTo.key;
+            reactionRelation.reactionEventId = localEchoEvent.eventId;
+            reactionRelation.senderId = localEchoEvent.sender;
+            
+            [reactionRelations addObject:reactionRelation];
+        }
+    }
+    
+    return [reactionRelations copy];
 }
 
 // We need to store all received relations even if we do not know the event yet
