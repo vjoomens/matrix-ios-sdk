@@ -42,4 +42,32 @@
     return relatesTo;
 }
 
+- (BOOL)isEqual:(id)object
+{
+    if (self == object)
+    {
+        return YES;
+    }
+    
+    if (![object isKindOfClass:[MXEventContentRelatesTo class]])
+    {
+        return NO;
+    }
+    
+    return [self isEqualToEventContentRelatesTo:(MXEventContentRelatesTo *)object];
+}
+
+- (BOOL)isEqualToEventContentRelatesTo:(MXEventContentRelatesTo*)eventContentRelatesTo
+{
+    return [_relationType isEqualToString:eventContentRelatesTo.relationType]
+    && [_eventId isEqualToString:eventContentRelatesTo.eventId]
+    && [_key isEqualToString:eventContentRelatesTo.key]
+    ;
+}
+
+- (NSUInteger)hash
+{
+    return [self.relationType hash] ^ [self.eventId hash] ^ [self.key hash];
+}
+
 @end
