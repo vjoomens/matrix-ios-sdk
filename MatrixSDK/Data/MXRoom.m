@@ -676,7 +676,8 @@ NSString *const kMXRoomInitialSyncNotification = @"kMXRoomInitialSyncNotificatio
     {
         // Check whether a local echo is required
         if ([eventTypeString isEqualToString:kMXEventTypeStringRoomMessage]
-            || [eventTypeString isEqualToString:kMXEventTypeStringSticker])
+            || [eventTypeString isEqualToString:kMXEventTypeStringSticker]
+            || [eventTypeString isEqualToString:kMXEventTypeStringReaction])
         {
             if (!event)
             {
@@ -2479,6 +2480,14 @@ NSString *const kMXRoomInitialSyncNotification = @"kMXRoomInitialSyncNotificatio
                         {
                             break;
                         }
+                    }
+                }
+                else if ([event.type isEqualToString:localEcho.type])
+                {
+                    if ([event.type isEqualToString:kMXEventTypeStringReaction]
+                        && [event.relatesTo isEqual:localEcho.relatesTo])
+                    {
+                        break;
                     }
                 }
                 localEcho = nil;
