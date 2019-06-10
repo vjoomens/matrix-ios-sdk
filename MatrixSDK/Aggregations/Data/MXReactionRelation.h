@@ -28,7 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) NSString *eventId;
 @property (nonatomic) NSString *reaction;
 
-// TODO: We could add sender add senderId, originServerTs
+// TODO: We could add originServerTs
+@property (nonatomic) NSString *senderId;
 @property (nonatomic) NSString *reactionEventId;
 
 @end
