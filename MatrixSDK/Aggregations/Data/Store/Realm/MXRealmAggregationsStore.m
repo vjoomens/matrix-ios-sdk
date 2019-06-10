@@ -208,6 +208,25 @@
     return reactionRelations;
 }
 
+- (nullable NSArray<MXReactionRelation*> *)reactionRelationsOnEvent:(NSString*)eventId withReaction:(NSString*)reaction
+{
+    RLMResults<MXRealmReactionRelation *> *realmReactionRelations = [MXRealmReactionRelation objectsInRealm:self.realm
+                                                                                                      where:@"eventId = %@ AND reaction = %@", eventId, reaction];
+    
+    NSMutableArray<MXReactionRelation *> *reactionRelations;
+    if (realmReactionRelations.count)
+    {
+        reactionRelations = [NSMutableArray arrayWithCapacity:realmReactionRelations.count];
+        for (MXRealmReactionRelation *realmReactionRelation in realmReactionRelations)
+        {
+            MXReactionRelation *reactionRelation = [self.mapper reactionRelationFromRealmReactionRelation:realmReactionRelation];
+            [reactionRelations addObject:reactionRelation];
+        }
+    }
+    
+    return reactionRelations;
+}
+
 - (void)deleteAllReactionRelationsInRoom:(NSString*)roomId
 {
     RLMRealm *realm = self.realm;
