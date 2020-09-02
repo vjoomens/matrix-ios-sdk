@@ -546,11 +546,22 @@ static NSUInteger preloadOptions;
 
 - (void)storeUser:(MXUser *)user
 {
-    [super storeUser:user];
+//    [super storeUser:user];
 
     dispatch_async(dispatchQueue, ^{
+        self->users[user.userId] =  user;
         self->usersToCommit[user.userId] = user;
     });
+}
+
+- (MXUser *)userWithUserId:(NSString *)userId
+{
+    __block MXUser *user;
+    dispatch_sync(dispatchQueue, ^{
+        user = self->users[userId];
+    });
+    
+    return user;
 }
 
 - (void)storeGroup:(MXGroup *)group
