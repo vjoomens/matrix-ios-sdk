@@ -548,7 +548,10 @@ static NSUInteger preloadOptions;
 {
     [super storeUser:user];
 
-    usersToCommit[user.userId] = user;
+    dispatch_async(dispatchQueue, ^{
+        usersToCommit[user.userId] = user;
+    })
+                            )
 }
 
 - (void)storeGroup:(MXGroup *)group
