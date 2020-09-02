@@ -550,7 +550,7 @@ static NSUInteger preloadOptions;
 
     dispatch_async(dispatchQueue, ^{
         usersToCommit[user.userId] = user;
-    })
+    });
                             )
 }
 
