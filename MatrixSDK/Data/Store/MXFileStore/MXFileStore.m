@@ -546,8 +546,6 @@ static NSUInteger preloadOptions;
 
 - (void)storeUser:(MXUser *)user
 {
-//    [super storeUser:user];
-
     dispatch_async(dispatchQueue, ^{
         self->users[user.userId] =  user;
         self->usersToCommit[user.userId] = user;
@@ -1588,18 +1586,19 @@ static NSUInteger preloadOptions;
 
 - (void)saveUsers
 {
-    // Save only in case of change
-    if (usersToCommit.count)
-    {
-        // Take a snapshot of users to store them on the other thread
-        NSMutableDictionary *theUsersToCommit = [[NSMutableDictionary alloc] initWithDictionary:usersToCommit copyItems:YES];
-        [usersToCommit removeAllObjects];
+    MXWeakify(self)
+    dispatch_async(dispatchQueue, ^(void){
+        MXStrongifyAndReturnIfNil(self);
+        
+        // Save only in case of change
+        if (usersToCommit.count)
+        {
+            // Take a snapshot of users to store them on the other thread
+            NSMutableDictionary *theUsersToCommit = [[NSMutableDictionary alloc] initWithDictionary:usersToCommit copyItems:YES];
+            [usersToCommit removeAllObjects];
+            
 #if DEBUG
-        NSLog(@"[MXFileStore commit] queuing saveUsers");
-#endif
-        dispatch_async(dispatchQueue, ^(void){
-
-#if DEBUG
+            NSLog(@"[MXFileStore commit] queuing saveUsers");
             NSDate *startDate = [NSDate date];
 #endif
             // Sort/Group users by the files they are be stored to
@@ -1661,8 +1660,8 @@ static NSUInteger preloadOptions;
 #if DEBUG
             NSLog(@"[MXFileStore] saveUsers in %.0fms", [[NSDate date] timeIntervalSinceDate:startDate] * 1000);
 #endif
-        });
-    }
+        }
+    });
 }
 
 #pragma mark - Matrix groups
